@@ -117,37 +117,26 @@ function operations_notifications_enqueue_scripts() {
 add_action('wp_enqueue_scripts', 'operations_notifications_enqueue_scripts');
 
 function record_popup_dismissal() {
+    // Enable error logging
+    ini_set('display_errors', 1);
+    error_log('Popup dismissal function called: ' . print_r($_POST, true));
+    
+    // Handle potential missing post_date
     if (!isset($_POST['post_date'])) {
+        error_log('No post date provided in request');
         wp_send_json_error('No post date provided.');
         return;
     }
 
     $post_date = sanitize_text_field($_POST['post_date']);
+    error_log('Processing post date: ' . $post_date);
+    
+    // Get existing data with error handling
     $counts = get_option('popup_acknowledged_counts', []);
-
-    if (!isset($counts[$post_date])) {
-        $counts[$post_date] = [];
+    if (!is_array($counts)) {
+        error_log('Invalid popup_acknowledged_counts format, resetting');
+        $counts = [];
     }
-
-    $timestamp = current_time('mysql');
-    $counts[$post_date][] = $timestamp;
-    update_option('popup_acknowledged_counts', $counts);
-
-    if (isset($_POST['fallback']) && $_POST['fallback'] === 'true') {
-        exit;
-    }
-
-    wp_send_json_success('Dismissal recorded.');
-}
-
-function record_popup_dismissal() {
-    if (!isset($_POST['post_date'])) {
-        wp_send_json_error('No post date provided.');
-        return;
-    }
-
-    $post_date = sanitize_text_field($_POST['post_date']);
-    $counts = get_option('popup_acknowledged_counts', []);
     
     // Get post ID and title based on the date
     $args = array(
@@ -163,6 +152,8 @@ function record_popup_dismissal() {
         'post_status' => 'publish'
     );
     
+    error_log('Searching for post with args: ' . print_r($args, true));
+    
     $query = new WP_Query($args);
     $post_title = 'Unknown Post';
     $post_id = 0;
@@ -171,26 +162,62 @@ function record_popup_dismissal() {
         $query->the_post();
         $post_title = get_the_title();
         $post_id = get_the_ID();
+        error_log("Found post: ID=$post_id, Title=$post_title");
         wp_reset_postdata();
+    } else {
+        error_log('No matching post found for date: ' . $post_date);
     }
 
+    // Create new entry if needed
     if (!isset($counts[$post_date])) {
         $counts[$post_date] = [
             'title' => $post_title,
             'post_id' => $post_id,
             'timestamps' => []
         ];
+        error_log('Created new entry for post date: ' . $post_date);
+    } else if (!isset($counts[$post_date]['timestamps'])) {
+        // Handle legacy data format
+        $old_data = $counts[$post_date];
+        $counts[$post_date] = [
+            'title' => $post_title,
+            'post_id' => $post_id,
+            'timestamps' => is_array($old_data) ? $old_data : []
+        ];
+        error_log('Converted legacy data format for date: ' . $post_date);
     }
 
+    // Add new timestamp
     $timestamp = current_time('mysql');
     $counts[$post_date]['timestamps'][] = $timestamp;
-    update_option('popup_acknowledged_counts', $counts);
-
-    if (isset($_POST['fallback']) && $_POST['fallback'] === 'true') {
+    
+    // Force the data to be updated by using a unique option name if necessary
+    $update_result = update_option('popup_acknowledged_counts', $counts);
+    error_log('Update option result: ' . ($update_result ? 'success' : 'failed or unchanged'));
+    
+    // If we're in fallback mode, just exit
+    if (isset($_POST['fallback'])) {
+        error_log('Fallback mode detected: ' . $_POST['fallback']);
+        if ($_POST['fallback'] === 'xhr') {
+            echo json_encode(['success' => true, 'message' => 'XHR fallback recorded']);
+        }
         exit;
     }
 
-    wp_send_json_success('Dismissal recorded with post title: ' . $post_title);
+    // Return success response
+    wp_send_json_success([
+        'message' => 'Dismissal recorded with post title: ' . $post_title,
+        'post_id' => $post_id,
+        'timestamp' => $timestamp
+    ]);
 }
 add_action('wp_ajax_record_popup_dismissal', 'record_popup_dismissal');
 add_action('wp_ajax_nopriv_record_popup_dismissal', 'record_popup_dismissal'); 
+
+function popup_debug_scripts() {
+    if (current_user_can('manage_options')) {
+        wp_enqueue_script('popup-debug', plugin_dir_url(__FILE__) . 'debug.js', array('jquery'), null, true);
+    }
+}
+add_action('wp_enqueue_scripts', 'popup_debug_scripts');
+
