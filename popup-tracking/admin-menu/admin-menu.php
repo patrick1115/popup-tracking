@@ -12,14 +12,45 @@ function popup_trigger_admin_menu() {
 }
 
 function popup_trigger_admin_page() {
+    // Check if we need to force refresh the counts
+    if (isset($_GET['refresh_data']) && $_GET['refresh_data'] === '1') {
+        $counts = get_option('popup_acknowledged_counts', []);
+        update_option('popup_acknowledged_counts_backup', $counts); // Create a backup
+        update_option('popup_acknowledged_counts', $counts); // Force refresh
+        
+        // Redirect to remove the refresh parameter
+        wp_redirect(remove_query_arg('refresh_data'));
+        exit;
+    }
+
     $acknowledgments = get_option('popup_acknowledged_counts', []);
     $per_page = 25;
     
     echo '<div class="wrap">';
     echo '<h1>Popup Acknowledged Views</h1>';
     
+    // Add refresh button and debug information
+    echo '<div class="notice notice-info inline">';
+    echo '<p>If you\'re not seeing the latest data, try refreshing. <a href="' . 
+         add_query_arg('refresh_data', '1') . '" class="button button-primary">Refresh Data</a></p>';
+    echo '</div>';
+    
+    // Add debug information section
+    echo '<div class="postbox" style="padding: 15px; margin-bottom: 20px;">';
+    echo '<h3>Debug Information</h3>';
+    echo '<p>Last data update: ' . date('Y-m-d H:i:s') . '</p>';
+    echo '<p>Number of records: ' . (is_array($acknowledgments) ? count($acknowledgments) : 0) . '</p>';
+    echo '<p>WordPress version: ' . get_bloginfo('version') . '</p>';
+    echo '<p>PHP version: ' . phpversion() . '</p>';
+    echo '</div>';
+    
     if (empty($acknowledgments) || !is_array($acknowledgments)) {
-        echo '<p>No acknowledgments recorded yet.</p>';
+        echo '<div class="notice notice-warning"><p>No acknowledgments recorded yet. This could be because:</p>';
+        echo '<ul style="list-style-type: disc; margin-left: 20px;">';
+        echo '<li>No users have dismissed the popup yet</li>';
+        echo '<li>The AJAX request is failing to complete</li>';
+        echo '<li>There may be a permission issue with saving the option</li>';
+        echo '</ul></div>';
         return;
     }
     
@@ -47,15 +78,34 @@ function popup_trigger_admin_page() {
         $paged_entries = array_slice($entries, $start_index, $per_page);
         
         echo '<div class="postbox" style="padding: 15px; margin-bottom: 20px;">';
-        echo '<h2>' . esc_html($post_date) . ' - Post: <a href="' . 
-             get_edit_post_link($post_id) . '">' . esc_html($post_title) . '</a></h2>';
-        echo '<p>' . esc_html($total_entries) . ' acknowledgments</p>';
         
-        echo '<ul style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;">';
-        foreach ($paged_entries as $entry) {
-            echo '<li>' . esc_html($entry) . '</li>';
+        // Add post information with better formatting
+        echo '<h2 style="display: flex; justify-content: space-between;">';
+        echo '<span>' . esc_html($post_date) . ' - Post: ';
+        
+        if ($post_id > 0) {
+            echo '<a href="' . get_edit_post_link($post_id) . '">' . esc_html($post_title) . '</a>';
+        } else {
+            echo esc_html($post_title);
         }
-        echo '</ul>';
+        echo '</span>';
+        
+        echo '<span class="dashicons dashicons-yes-alt" style="color: green;" title="' . 
+             esc_attr($total_entries) . ' acknowledgments"></span>';
+        echo '</h2>';
+        
+        echo '<p><strong>' . esc_html($total_entries) . ' acknowledgments</strong></p>';
+        
+        echo '<table class="wp-list-table widefat fixed striped" style="margin-top: 10px;">';
+        echo '<thead><tr><th>Time Acknowledged</th><th>User Time (Local)</th></tr></thead>';
+        echo '<tbody>';
+        foreach ($paged_entries as $entry) {
+            echo '<tr>';
+            echo '<td>' . esc_html($entry) . '</td>';
+            echo '<td><script>document.write(new Date("' . esc_js($entry) . '").toLocaleString());</script></td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
         
         if ($total_pages > 1) {
             echo '<div class="tablenav" style="margin-top: 10px;">';
