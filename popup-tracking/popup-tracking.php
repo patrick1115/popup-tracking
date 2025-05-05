@@ -89,7 +89,7 @@ function operations_notifications_recent_posts() {
     ]);
 
     $has_recent_posts = !empty($recent_posts);
-    ob_start();
+   //ob_start();
 
     if ($has_recent_posts) {
 	$latest_post_date = get_the_date('Y-m-d', $recent_posts[0]->ID);
@@ -103,9 +103,10 @@ function operations_notifications_recent_posts() {
         echo '</div>';
     }
 
-    return ob_get_clean();
+    //return ob_get_clean();
 }
-add_shortcode('operations_notifications_recent', 'operations_notifications_recent_posts');
+//add_shortcode('operations_notifications_recent', 'operations_notifications_recent_posts');
+add_action('operations_notifications_recent', 'operations_notifications_recent_posts');
 
 function operations_notifications_enqueue_scripts() {
     wp_enqueue_script('operations-notifications-js', plugin_dir_url(__FILE__) . 'operations-notifications.js', array('jquery'), null, true);
