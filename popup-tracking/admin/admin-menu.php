@@ -177,10 +177,14 @@ function popup_trigger_admin_page() {
 
     $backup = get_option('popup_acknowledged_counts_backup', []);
     foreach ($backup as $post_date => $data) {
+        if (isset($acknowledgments[$post_date])) {
+            continue; // skip restored entries
+        }
+    
         $post_title = isset($data['title']) ? $data['title'] : 'Unknown Post';
         $post_id = isset($data['post_id']) ? $data['post_id'] : 0;
         $total_entries = isset($data['timestamps']) ? count($data['timestamps']) : (is_array($data) ? count($data) : 0);
-
+    
         echo '<div class="postbox" style="padding: 15px; margin-bottom: 20px; background: #fff8e5;">';
         echo '<h2 style="display: flex; justify-content: space-between; align-items: center;">';
         echo '<span>Cleared: ' . esc_html($post_date) . ' - Post: ';
@@ -190,19 +194,19 @@ function popup_trigger_admin_page() {
         } else {
             echo esc_html($post_title);
         }
-
+    
         echo '</span>';
-
+    
         echo '<span>';
         echo '<span class="dashicons dashicons-dismiss" style="color: orange; margin-right: 10px;" title="Cleared"></span>';
         $undo_url = add_query_arg('undo_clear', rawurlencode($post_date));
         echo '<a href="' . esc_url($undo_url) . '" class="button button-small" style="background: #ffba00; border-color: #ffba00;">Undo Clear</a>';
         echo '</span>';
-
+    
         echo '</h2>';
         echo '<p><strong>' . esc_html($total_entries) . ' acknowledgments (in backup)</strong></p>';
         echo '</div>';
-    }   
+    } 
 
     
     echo '</div>';
