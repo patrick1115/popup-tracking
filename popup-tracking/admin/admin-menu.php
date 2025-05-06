@@ -23,12 +23,26 @@ function popup_trigger_admin_page() {
         exit;
     }
 
+    // Clear specific post data if requested
+    if (isset($_GET['clear_post']) && $_GET['clear_post']) {
+        $clear_key = sanitize_text_field($_GET['clear_post']);
+        $counts = get_option('popup_acknowledged_counts', []);
+        if (isset($counts[$clear_key])) {
+            unset($counts[$clear_key]);
+            update_option('popup_acknowledged_counts', $counts);
+        }
+
+        // Redirect to remove the clear_post parameter
+        wp_redirect(remove_query_arg('clear_post'));
+        exit;
+    }
     $acknowledgments = get_option('popup_acknowledged_counts', []);
     $per_page = 25;
     
     echo '<div class="wrap">';
     echo '<h1>Popup Acknowledged Views</h1>';
     
+    /*
     // Add refresh button and debug information
     echo '<div class="notice notice-info inline">';
     echo '<p>If you\'re not seeing the latest data, try refreshing. <a href="' . 
@@ -43,7 +57,8 @@ function popup_trigger_admin_page() {
     echo '<p>WordPress version: ' . get_bloginfo('version') . '</p>';
     echo '<p>PHP version: ' . phpversion() . '</p>';
     echo '</div>';
-    
+    */
+
     if (empty($acknowledgments) || !is_array($acknowledgments)) {
         echo '<div class="notice notice-warning"><p>No acknowledgments recorded yet. This could be because:</p>';
         echo '<ul style="list-style-type: disc; margin-left: 20px;">';
@@ -92,6 +107,10 @@ function popup_trigger_admin_page() {
         
         echo '<span class="dashicons dashicons-yes-alt" style="color: green;" title="' . 
              esc_attr($total_entries) . ' acknowledgments"></span>';
+
+        $clear_url = add_query_arg('clear_post', rawurlencode($post_date));
+        echo '<a href="' . esc_url($clear_url) . '" class="button button-small" onclick="return confirm(\'Are you sure you want to clear this post\'s acknowledgment data?\')">Clear</a>';
+        echo '</span>';     
         echo '</h2>';
         
         echo '<p><strong>' . esc_html($total_entries) . ' acknowledgments</strong></p>';
