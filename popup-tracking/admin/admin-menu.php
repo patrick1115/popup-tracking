@@ -28,14 +28,38 @@ function popup_trigger_admin_page() {
         $clear_key = sanitize_text_field($_GET['clear_post']);
         $counts = get_option('popup_acknowledged_counts', []);
         if (isset($counts[$clear_key])) {
+            // backup, then clear
+            $backup = get_option('popup_acknowledged_counts_backup', []);
+            $backup[$clear_key] = $counts[$clear_key];
+            update_option('popup_acknowledged_counts_backup', $backup);
+
             unset($counts[$clear_key]);
-            update_option('popup_acknowledged_counts', $counts);
+            update_option('popup_acknowledged_counts', $counts);                                                
         }
 
         // Redirect to remove the clear_post parameter
         wp_redirect(remove_query_arg('clear_post'));
         exit;
     }
+
+    if (isset($_GET['undo_clear']) && $_GET['undo_clear']) {
+        $undo_key = sanitize_text_field($_GET['undo_clear']);
+        $backup = get_option('popup_acknowledged_counts_backup', []);
+        $counts = get_option('popup_acknowledged_counts', []);
+        
+        if (isset($backup[$undo_key])) {
+            $counts[$undo_key] = $backup[$undo_key];
+            update_option('popup_acknowledged_counts', $counts);
+
+            //removed from backup after restore
+            unset($backup[$undo_key]);
+            update_option('popup_acknowledged_counts_backup', $backup);
+        }
+
+        wp_redirect(remove_query_arg('undo_clear'));
+        exit;
+    }
+
     $acknowledgments = get_option('popup_acknowledged_counts', []);
     $per_page = 25;
     
@@ -150,6 +174,36 @@ function popup_trigger_admin_page() {
         
         echo '</div>';
     }
+
+    $backup = get_option('popup_acknowledged_counts_backup', []);
+    foreach ($backup as $post_date => $data) {
+        $post_title = isset($data['title']) ? $data['title'] : 'Unknown Post';
+        $post_id = isset($data['post_id']) ? $data['post_id'] : 0;
+        $total_entries = isset($data['timestamps']) ? count($data['timestamps']) : (is_array($data) ? count($data) : 0);
+
+        echo '<div class="postbox" style="padding: 15px; margin-bottom: 20px; background: #fff8e5;">';
+        echo '<h2 style="display: flex; justify-content: space-between; align-items: center;">';
+        echo '<span>Cleared: ' . esc_html($post_date) . ' - Post: ';
+        
+        if ($post_id > 0) {
+            echo '<a href="' . get_edit_post_link($post_id) . '">' . esc_html($post_title) . '</a>';
+        } else {
+            echo esc_html($post_title);
+        }
+
+        echo '</span>';
+
+        echo '<span>';
+        echo '<span class="dashicons dashicons-dismiss" style="color: orange; margin-right: 10px;" title="Cleared"></span>';
+        $undo_url = add_query_arg('undo_clear', rawurlencode($post_date));
+        echo '<a href="' . esc_url($undo_url) . '" class="button button-small" style="background: #ffba00; border-color: #ffba00;">Undo Clear</a>';
+        echo '</span>';
+
+        echo '</h2>';
+        echo '<p><strong>' . esc_html($total_entries) . ' acknowledgments (in backup)</strong></p>';
+        echo '</div>';
+    }   
+
     
     echo '</div>';
 }
