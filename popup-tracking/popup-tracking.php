@@ -2,7 +2,9 @@
 /**
  * Plugin Name: Popup Tracking
  * Description: Checks for recent posts and triggers (Elementor Pro) popup. Added section that will post data from determined post category. 
- * Version: 1.01
+ *                 - Added admin-panel that lists timestamp for acknolodgement of popup 
+ *                  > added clear and undo clear buttons
+ * Version: 1.21
  */
 
 if (!defined('ABSPATH')) {
