@@ -10,76 +10,78 @@ function popup_trigger_admin_menu() {
         25                                
     );
 }
+
 function popup_trigger_admin_page() {
-    // Get current data
+    $admin_message = '';
+    $admin_message_type = 'success';
+    
+    if (isset($_GET['action'])) {
+        if ($_GET['action'] === 'refresh_data') {
+            $counts = get_option('popup_acknowledged_counts', []);
+            update_option('popup_acknowledged_counts_backup', $counts); // Create a backup
+            update_option('popup_acknowledged_counts', $counts); // Force refresh
+            $admin_message = 'Data refreshed successfully.';
+        }
+        
+        //clear post
+        if ($_GET['action'] === 'clear_post' && isset($_GET['post_date'])) {
+            $clear_key = sanitize_text_field($_GET['post_date']);
+            $counts = get_option('popup_acknowledged_counts', []);
+            
+            if (isset($counts[$clear_key])) {
+                // Backup, then clear
+                $backup = get_option('popup_acknowledged_counts_backup', []);
+                $backup[$clear_key] = $counts[$clear_key];
+                update_option('popup_acknowledged_counts_backup', $backup);
+
+                unset($counts[$clear_key]);
+                update_option('popup_acknowledged_counts', $counts);
+                
+                $admin_message = 'Post data cleared successfully.';
+            } else {
+                $admin_message = 'Post data not found.';
+                $admin_message_type = 'error';
+            }
+        }
+        
+        // undo clear 
+        if ($_GET['action'] === 'undo_clear' && isset($_GET['post_date'])) {
+            $undo_key = sanitize_text_field($_GET['post_date']);
+            $backup = get_option('popup_acknowledged_counts_backup', []);
+            $counts = get_option('popup_acknowledged_counts', []);
+            
+            if (isset($backup[$undo_key])) {
+                $counts[$undo_key] = $backup[$undo_key];
+                update_option('popup_acknowledged_counts', $counts);
+
+                // Remove from backup after restore
+                unset($backup[$undo_key]);
+                update_option('popup_acknowledged_counts_backup', $backup);
+                
+                $admin_message = 'Post data restored successfully.';
+            } else {
+                $admin_message = 'Backup data not found.';
+                $admin_message_type = 'error';
+            }
+        }
+    }
+    
     $acknowledgments = get_option('popup_acknowledged_counts', []);
     $backup = get_option('popup_acknowledged_counts_backup', []);
-    $redirect_needed = false;
-    
-    // Check if we need to force refresh the counts
-    if (isset($_GET['refresh_data']) && $_GET['refresh_data'] === '1') {
-        $counts = get_option('popup_acknowledged_counts', []);
-        update_option('popup_acknowledged_counts_backup', $counts); // Create a backup
-        update_option('popup_acknowledged_counts', $counts); // Force refresh
-        $redirect_needed = true;
-    }
-
-    // Clear specific post data if requested
-    if (isset($_GET['clear_post']) && $_GET['clear_post']) {
-        $clear_key = sanitize_text_field($_GET['clear_post']);
-        $counts = get_option('popup_acknowledged_counts', []);
-        if (isset($counts[$clear_key])) {
-            // backup, then clear
-            $backup = get_option('popup_acknowledged_counts_backup', []);
-            $backup[$clear_key] = $counts[$clear_key];
-            update_option('popup_acknowledged_counts_backup', $backup);
-
-            unset($counts[$clear_key]);
-            update_option('popup_acknowledged_counts', $counts);
-            
-            // Update our local copies to reflect changes
-            $acknowledgments = $counts;
-            $backup = get_option('popup_acknowledged_counts_backup', []);
-        }
-        $redirect_needed = true;
-    }
-
-    if (isset($_GET['undo_clear']) && $_GET['undo_clear']) {
-        $undo_key = sanitize_text_field($_GET['undo_clear']);
-        $backup = get_option('popup_acknowledged_counts_backup', []);
-        $counts = get_option('popup_acknowledged_counts', []);
-        
-        if (isset($backup[$undo_key])) {
-            $counts[$undo_key] = $backup[$undo_key];
-            update_option('popup_acknowledged_counts', $counts);
-
-            //removed from backup after restore
-            unset($backup[$undo_key]);
-            update_option('popup_acknowledged_counts_backup', $backup);
-            
-            // Update our local copies to reflect changes
-            $acknowledgments = $counts;
-            $backup = get_option('popup_acknowledged_counts_backup', []);
-        }
-        $redirect_needed = true;
-    }
-
-    // Only redirect after processing and only if needed
-    if ($redirect_needed) {
-        $redirect_url = remove_query_arg(['refresh_data', 'clear_post', 'undo_clear']);
-        wp_redirect($redirect_url);
-        exit;
-    }
-
     $per_page = 25;
     
     echo '<div class="wrap">';
     echo '<h1>Popup Acknowledged Views</h1>';
     
-    // Add refresh button if needed
+    //admin message 
+    if (!empty($admin_message)) {
+        echo '<div class="notice notice-' . esc_attr($admin_message_type) . ' is-dismissible"><p>' . esc_html($admin_message) . '</p></div>';
+    }
+    
+    //Add refresh button
     echo '<div class="notice notice-info inline">';
     echo '<p>If you\'re not seeing the latest data, try refreshing. <a href="' . 
-         add_query_arg('refresh_data', '1') . '" class="button button-primary">Refresh Data</a></p>';
+         esc_url(add_query_arg(['action' => 'refresh_data'])) . '" class="button button-primary">Refresh Data</a></p>';
     echo '</div>';
     
     if (empty($acknowledgments) || !is_array($acknowledgments)) {
@@ -90,14 +92,14 @@ function popup_trigger_admin_page() {
         echo '<li>There may be a permission issue with saving the option</li>';
         echo '</ul></div>';
     } else {
-        // Sort acknowledgments by date (newest first)
+        //Sort acknowledgments by date
         krsort($acknowledgments);
         
         echo '<h2>Active Acknowledgments</h2>';
         display_acknowledgments($acknowledgments, $per_page);
     }
     
-    // Show cleared posts in a separate section
+    //Show cleared posts in section
     if (!empty($backup) && is_array($backup)) {
         echo '<h2 style="margin-top: 30px;">Cleared Acknowledgments</h2>';
         display_cleared_posts($backup, $acknowledgments);
@@ -106,18 +108,14 @@ function popup_trigger_admin_page() {
     echo '</div>';
 }
 
-/**
- * Display the active acknowledgments
- */
 function display_acknowledgments($acknowledgments, $per_page) {
     foreach ($acknowledgments as $post_date => $data) {
-        // Check if we have the new structure or legacy data
         if (isset($data['timestamps']) && is_array($data['timestamps'])) {
             $entries = $data['timestamps'];
             $post_title = isset($data['title']) ? $data['title'] : 'Unknown Post';
             $post_id = isset($data['post_id']) ? $data['post_id'] : 0;
         } else {
-            // Legacy data structure
+            // Legacy data
             $entries = is_array($data) ? $data : [];
             $post_title = 'Unknown Post';
             $post_id = 0;
@@ -132,7 +130,6 @@ function display_acknowledgments($acknowledgments, $per_page) {
         
         echo '<div class="postbox" style="padding: 15px; margin-bottom: 20px;">';
         
-        // Add post information with better formatting
         echo '<h2 style="display: flex; justify-content: space-between;">';
         echo '<span>' . esc_html($post_date) . ' - Post: ';
         
@@ -147,7 +144,8 @@ function display_acknowledgments($acknowledgments, $per_page) {
         echo '<span class="dashicons dashicons-yes-alt" style="color: green; margin-right: 10px;" title="' . 
              esc_attr($total_entries) . ' acknowledgments"></span>';
 
-        $clear_url = add_query_arg('clear_post', rawurlencode($post_date));
+        // action-based URL structure
+        $clear_url = add_query_arg(['action' => 'clear_post', 'post_date' => rawurlencode($post_date)]);
         echo '<a href="' . esc_url($clear_url) . '" class="button button-small" onclick="return confirm(\'Are you sure you want to clear this post\\\'s acknowledgment data?\')">Clear</a>';
         echo '</span>';     
         echo '</h2>';
@@ -171,8 +169,8 @@ function display_acknowledgments($acknowledgments, $per_page) {
             echo '<span class="pagination-links">';
             
             for ($i = 1; $i <= $total_pages; $i++) {
-                $url = admin_url('admin.php?page=popup-trigger-admin');
-                $url = add_query_arg($param_key, $i, $url);
+                $base_url = admin_url('admin.php?page=popup-trigger-admin');
+                $url = add_query_arg($param_key, $i, $base_url);
                 $is_current = ($i === $current_page);
                 
                 if ($is_current) {
@@ -191,12 +189,8 @@ function display_acknowledgments($acknowledgments, $per_page) {
     }
 }
 
-/**
- * Display cleared posts separately
- */
 function display_cleared_posts($backup, $active_acknowledgments) {
     foreach ($backup as $post_date => $data) {
-        // Skip if this post is already in the active acknowledgments
         if (isset($active_acknowledgments[$post_date])) {
             continue;
         }
@@ -219,7 +213,8 @@ function display_cleared_posts($backup, $active_acknowledgments) {
     
         echo '<span>';
         echo '<span class="dashicons dashicons-dismiss" style="color: orange; margin-right: 10px;" title="Cleared"></span>';
-        $undo_url = add_query_arg('undo_clear', rawurlencode($post_date));
+        
+        $undo_url = add_query_arg(['action' => 'undo_clear', 'post_date' => rawurlencode($post_date)]);
         echo '<a href="' . esc_url($undo_url) . '" class="button button-small" style="background: #ffba00; border-color: #ffba00;">Undo Clear</a>';
         echo '</span>';
     
